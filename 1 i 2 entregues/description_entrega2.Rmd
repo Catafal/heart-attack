@@ -1,0 +1,836 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+# Load libraries
+
+```{r}
+rm(list=ls())
+
+library(AER)
+library(car)
+library(FactoMineR)
+```
+
+
+# Load data and take a look
+
+```{r}
+file_path = "/Users/jordicatafal/Downloads/ADEI/PROJECTE/heart.csv"
+df = read.csv(file_path, header = T)
+head(df)
+```
+
+# Categorical data: change numeric value to categorical
+
+```{r}
+df$sex[which(df$sex==0)] <- "Female"
+df$sex[which(df$sex==1)] <- "Male"
+df$sex <- as.factor(df$sex)
+
+df$cp[which(df$cp==0)] <- "Typical Angina"
+df$cp[which(df$cp==1)] <- "Atypical Angina"
+df$cp[which(df$cp==2)] <- "Non-anginal Pain"
+df$cp[which(df$cp==3)] <- "Asymptomatic"
+df$cp <- as.factor(df$cp)
+
+df$fbs[which(df$fbs==0)] <- "<= 120 mg/dL"
+df$fbs[which(df$fbs==1)] <- "> 120 mg/dL"
+df$fbs <- as.factor(df$fbs)
+
+df$restecg[which(df$restecg==0)] <- "Normal"
+df$restecg[which(df$restecg==1)] <- "Abnormality"
+df$restecg[which(df$restecg==2)] <- "Hypertrophy"
+df$restecg <- as.factor(df$restecg)
+
+df$exang[which(df$exang==0)] <- "No"
+df$exang[which(df$exang==1)] <- "Yes"
+df$exang <- as.factor(df$exang)
+
+df$slope[which(df$slope==0)] <- "Upsloping"
+df$slope[which(df$slope==1)] <- "Flat"
+df$slope[which(df$slope==2)] <- "Downsloping"
+df$slope <- as.factor(df$slope)
+
+df$thal[which(df$thal==0)] <- "Normal"
+df$thal[which(df$thal==1)] <- "Fixed Defect"
+df$thal[which(df$thal==2)] <- "Reversible Defect"
+df$thal <- as.factor(df$thal)
+```
+
+
+```{r}
+head(df)
+
+
+hist(df$age)
+plot(df$sex)
+
+df$age <- as.numeric(df$age)
+df$trestbps <- as.numeric(df$trestbps)
+df$chol <- as.numeric(df$chol)
+df$thalach <- as.numeric(df$thalach)
+df$oldpeak <- as.numeric(df$oldpeak)
+
+sapply(df, class)
+```
+
+
+# Detection of errors
+
+```{r}
+summary(df)
+
+df$thal[which(df$thal==3)] <- NA
+df$ca[which(df$ca==4)] <- NA
+
+miss_val = sum(is.na(df))
+miss_val
+ 
+summary(df)
+```
+
+# Univariate detection
+
+```{r}
+outliers <- function(column, name){
+  
+  sumlist <- summary(column)
+  q1 <- sumlist[2] 
+  q3 <- sumlist[5]
+  
+  
+  boxplot(column, main = paste("Boxplot ", name), col = "orange", horizontal = T)
+  
+  # IQR calculation
+  iqr <- q3 - q1 
+  
+  # Mild inferior limit:
+  mild_inf_lim <- sumlist[2]-1.5*iqr
+  # Extreme inferior limit:
+  extreme_inf_lim <- sumlist[2]-3*iqr
+  abline(v=mild_inf_lim, col = "red", lty = 2)
+  abline(v=extreme_inf_lim, col = "red",  lty = 2, lwd = 2)
+  mild_sup_lim <- sumlist[5]+1.5*iqr
+  extreme_sup_lim <- sumlist[5]+3*iqr
+  abline(v=mild_sup_lim, col = "red", lty = 2)
+  abline(v=extreme_sup_lim, col = "red",  lty = 2, lwd = 2)
+  
+}
+```
+
+```{r}
+outliers(df$age, "age")
+outliers(df$trestbps, "trestbps")
+outliers(df$chol, "chol")
+outliers(df$thalach, "thalach")
+outliers(df$oldpeak, "oldpeak")
+outliers(df$ca, "ca")
+outliers(df$target, "target")
+```
+
+```{r}
+FindMildOutliers <- function(data) {
+  lowerq = quantile(data, na.rm = TRUE)[2]
+  upperq = quantile(data, na.rm = TRUE)[4]
+  iqr = upperq - lowerq #Or use IQR(data)
+  # we identify extreme outliers
+  extreme.threshold.upper = (iqr * 1.5) + upperq
+  extreme.threshold.lower = lowerq - (iqr * 1.5)
+  result <- which(data > extreme.threshold.upper | data < extreme.threshold.lower)
+}
+
+FindExtremeOutliers <- function(data) {
+  lowerq = quantile(data, na.rm = TRUE)[2]
+  upperq = quantile(data, na.rm = TRUE)[4]
+  iqr = upperq - lowerq #Or use IQR(data)
+  # we identify extreme outliers
+  extreme.threshold.upper = (iqr * 3) + upperq
+  extreme.threshold.lower = lowerq - (iqr * 3)
+  result <- which(data > extreme.threshold.upper | data < extreme.threshold.lower)
+}
+
+
+FindMissingValues <- function(data) {
+  result <- which(sum(is.na(data)) > 0)
+}
+
+```
+
+## Finding all Missing Values by Variables
+```{r}
+miss <- colSums(is.na(df))
+rank_miss <- sort(miss, decreasing = TRUE)
+rank_miss
+```
+
+## Finding all Extreme Outliers by Variables
+```{r}
+df2 <- Filter(is.numeric, df)
+pos <- lapply(df2, FindExtremeOutliers)
+extr_out <- lengths(pos)
+num_outliers = length(pos)
+rank_extr <- sort(extr_out, decreasing = TRUE)
+rank_extr
+```
+
+
+## Finding all Mild Outliers by Variables
+```{r}
+df2 <- Filter(is.numeric, df)
+pos <- lapply(df2, FindMildOutliers)
+mild_out <- lengths(pos)
+rank_mild <- sort(mild_out, decreasing = TRUE)
+rank_mild
+```
+
+## Finding all Missing Values by Individuals
+```{r}
+pos <- apply(df, 1, FindMissingValues)
+pos <- which(pos > 0)
+pos
+```
+
+## Finding all Extreme Outliers by Individuals
+```{r}
+df2 <- Filter(is.numeric, df)
+posExtremeInd <- apply(df2, 1, FindExtremeOutliers)
+posExtremeInd <- which(posExtremeInd > 0)
+posExtremeInd
+```
+
+## Finding all Mild Outliers by Individuals
+```{r}
+df2 <- Filter(is.numeric, df)
+pos <- apply(df2, 1, FindMildOutliers)
+pos <- which(pos > 0)
+pos
+length(pos)
+```
+
+
+## Create variable adding the total number missing values, outliers and errors.
+
+```{r}
+num_outliers_miss_errors = miss_val + num_outliers
+num_outliers_miss_errors
+```
+# Imputation
+
+## Imputation of factor thal
+```{r}
+library(missMDA)
+# Categorical imputation 
+f <- Filter(is.factor, df)
+vars_dis = colnames(f)
+summary(df[,vars_dis])
+res.input<-imputeMCA(df[,vars_dis],method="EM")
+summary(res.input$completeObs)
+
+
+# Validation
+barplot(table(df$thal),col="red")
+barplot(table(res.input$completeObs[,1]),col="blue")
+
+df[,vars_dis] <- res.input$completeObs
+summary(df)
+
+miss_val = sum(is.na(df))
+miss_val
+
+```
+
+
+
+
+## Imputation of numeric ca
+
+```{r}
+library(class)
+# Numeric imputation  only explanatory variables - never for target
+n <- Filter(is.numeric, df)
+summary(n)
+vars_con = colnames(n)
+
+fullvariables <- c(1,4,5,8,10,14)
+aux <- df[,fullvariables]
+dim(aux)
+names(aux)
+
+summary(df)
+
+aux1 <- aux[!is.na(df$ca),]
+dim(aux1)
+
+
+
+aux2 <- aux[is.na(df$ca),]
+dim(aux2)
+
+knn.ing = knn(aux1, aux2, df$ca[!is.na(df$ca)])
+
+df$ca[is.na(df$ca)] <- as.numeric(as.character(knn.ing))
+
+# Validation
+summary(df)
+
+
+miss_val = sum(is.na(df))
+miss_val
+```
+
+
+## Compute the correlation with all other variables. Rank these variables according the correlation
+```{r}
+library(FactoMineR)
+library(mvoutlier)
+df2 <- Filter(is.numeric, df)
+res <- cor(df2)
+round(res, 2)
+```
+
+```{r}
+library(corrplot)
+corrplot(res)
+```
+
+## Correlation variables and all other variables
+```{r}
+condes(df, 1)
+# age & sex -> There is a almosts nonexistent dependance between these two variables, since p-value < 0.05
+# age & cp -> There is a almosts nonexistent dependance between these two variables, since p-value < 0.05
+# age & trestbps -> There is slight positive correlation between the age and trestbps,since p-value < 0.05
+# age & chol -> There is slight positive correlation between the age and chol,since p-value < 0.05
+# age & fbs -> There is a slight dependance between these two variables, since p-value < 0.05
+# age & restecg -> There is a almosts nonexistent dependance between these two variables, since p-value < 0.05
+# age & thalach -> There is a near moderate negative correlation between these variables, since p-value < 0.05
+# age & exang -> Exang has no effect on the va  lues of age, p-value > 0.05
+# age & oldpeak -> There is slight positive correlation between the age and oldpeak ,since p-value < 0.05
+# age & slope -> There is a almosts nonexistent dependance between these two variables, since p-value < 0.05
+# age & ca -> There is slight positive correlation between the age and ca,since p-value < 0.05
+# age & thal ->  There is a almosts nonexistent dependance between these two variables, since p-value < 0.05
+# age & target -> There is a slight negative correlation between these variables, since p-value < 0.05
+
+
+#Correlation with sex and all other variables
+#catdes(df, 2)
+# sex & age -> Age has a no effect in the value of sex, since p-value > 0,05
+# sex & cp -> 34.93% of Female have Non-anginal Pain, 42.63% of Female have Typical Angina,
+#             and 4.17% are Asymptomatic.
+#             8.98% of Male are Asymptomatic, 51.05% of Male have Typical Angina, and 24.54%
+#             of Male have Non-anginal Pain.
+# sex & trestbps -> Trestbps has no effect in the value of sex, since p-value > 0,05
+# sex & chol -> Chol has a small to medium effect in the value of sex, since p-value < 0,05
+# sex & fbs -> Fbs is not significant.
+# sex & restecg -> 3.53% of Female have Hypertrophy, and the rest are not significant.
+#                  0.56% of Male have Hypertrophy, and the rest are not significant.
+# sex & thalac -> Thalac is not significant.
+# sex & exang -> 76.28% of Female have the value of NO, and the other 23.72% have a value of YES.
+#                38.01% of Male have a value of YES, and the other 61.99% have a value of NO.
+# sex & oldpeak -> Oldpeak has no effect in the value of sex, since p-value > 0,05
+# sex & slope -> Slope is not significant.
+# sex & ca -> Ca has a small effect in the value of sex, since p-value < 0,05
+# sex & thal -> 80% of Female have Reversible Defect, 1.28% of Female have Fixed Defect
+#               and 16.99% have no value.
+#               50.07% of Male have no value, 8.42% of Male have Fixed Defect, 40.95% of
+#               Male have Reversible Defect.
+# sex & target -> Target has a medium effect in the value of sex, since p-value < 0,05
+
+
+# Correlation with cp and all other variable
+#catdes(df, 3)
+#cp & age -> Age has a small effect in the value of cp, since p-value < 0.05
+#cp & sex -> 83.11% of Asymptomatic are Male and the other 16.88% are Female. 
+#            Sex has no effect on the people who has Atypical Angina.
+#            61.62% of Non-anginal Pain are Male and the other 38.38% are Female.
+#            73.24% of Typical Angina are Male and the other 26.76% are Female.
+#cp & trestbps -> Trestbps has a medium effect in the value of cp, since p-value < 0.05.
+#cp & chol -> Chol has no effect in cp's value, since p-value > 0.05.
+#cp & fbs -> Fbs has no effect on the people who is Asymtomatic.
+#            90.4% of Atypical Angina has fbs<=120 mg/dL and the other 9.58% has fbs>120 mg/dL.
+#            19.36% of Non-anginal Pain has fbs > 120 mg/dL and the other 80.63% has fbs<=120 mg/dL.
+#            Fbs has no effect on the people who has Typical Angina.
+#cp & restecg -> restecg has no effect on the people who is Asymtomatic.
+#               61.67% of Atypical Angina has abnormal restecg, 38.32% has normal restecg and the remaining Hypertrophy restecg has no effect.
+#               41.19% of Non-anginal Pain has normal restecg,  57.74% has abnormal restecg and the remaining Hypertrophy restecg has no effect.
+#               54.32% of Typical Angina has normal restecg, 43.26% has abnormal restecg and the remaining Hypertrophy restecg has no effect.
+#cp & thalach -> Thalach has a large effect in the value of cp, since p-value < 0.05
+#cp & exang -> 83.11% of Asymptomatic has no exang and the other 16.88% has exang.
+#             92.81% of Atypical Angina has no exang and the other 7.18% has exang.
+#             86.97% of Non-anginal Pain has no exang and the other 13.02% has exang.
+#             56.94% of Typical Angina has exang and the other 43.06% has no exang.
+#cp & oldpeak -> Oldpeak has a large effect in the value of cp, since p-value < 0.05
+#cp & slope -> slope has no effect on the people who is Asymtomatic.
+#             70.66% of Atypical Angina has downsloping slope, 24.55% has flat slope and the remaining Upsloping slope has no effect.
+#             55.98% of Non-anginal Pain has downsloping slope, 38.73% has flat slope and the remaining Upsloping slope has no effect.
+#             58.75% of Typical Angina has flat slope, 32.79% has downsloping slope and the remaining Upsloping slope has no effect.
+#cp & ca -> Ca has a medium effect in the value of cp, since p-value < 0.05
+#cp & thal -> thal has no effect on the people who is Asymtomatic.
+#             thal has no effect on the people who has Atypical Angina.
+#             95.07% of Non-anginal Pain has reversible defect thal, 3.87% has fixed defect and the remaining normal thal has no effect.
+#             85.51% of Typical Angina has reversible defect thal, 13.68% has fixed defect and the remaining normal thal has no effect.
+#cp & target -> Target has a large effect in the value of cp, since p-value < 0.05
+
+#condes(df, 4)
+# trestbps & age -> There is slight positive correlation between trestbps and age, since p-value < 0.05
+# trestbps & sex -> There is an almost nonexistent dependence between these two variables, since p-value < 0.05
+# trestbps & cp -> There is an almost nonexistent dependence between these two variables, since p-value < 0.05
+# trestbps & chol -> There is slight positive correlation between the trestbps and chol,since p-value < 0.05
+# trestbps & fbs -> There is a slight dependence between these two variables, since p-value < 0.05
+# trestbps & restecg -> There is an almost nonexistent dependence between these two variables, since p-value < 0.05
+# trestbps & thalach -> Talach has no effect on the values of trestbps, p-value > 0.05
+# trestbps & exang -> Exang has no effect on the values of trestbps, p-value > 0.05
+# trestbps & oldpeak -> There is slight positive correlation between trestbps and oldpeak ,since p-value < 0.05
+# trestbps & slope -> There is an almost nonexistent dependence between these two variables, since p-value < 0.05
+# trestbps & ca -> There is slight positive correlation between trestbps and ca,since p-value < 0.05
+# trestbps & thal ->  There is an almost nonexistent dependence between these two variables, since p-value < 0.05
+# trestbps & target -> There is a slight negative correlation between these variables, since p-value < 0.05
+
+# Correlation with chol and all other variable
+#condes(df, 5)
+#chol & age -> There is a slight positive correlation between the chol and age,since p-value < 0.05
+#chol & sex -> There is a almost nonexistent dependence between these two variables, since p-value < 0.05
+#chol & cp -> Only the category Typical Angina has a positive (or significant) impact in the mean of chol
+#chol & trestbps -> There is a non to a slight positive correlation between these variables, since p-value < 0.05
+#chol & fbs -> Fbs is not significant
+#chol & restecg -> There is a almost nonexistent dependence between these two variables, since p-value < 0.05
+#chol & thalach -> Thalach is not significant
+#chol & exang -> There is a almost nonexistent dependence between these two variables, since p-value < 0.05
+#chol & oldpeak -> There is a almost nonexistent correlation between these two variables, since p-value < 0.05
+#chol & slope -> Only the category Flat has a positive (or significant) impact in the mean of chol
+#chol & ca -> There is a almost nonexistent correlation between these two variables, since p-value < 0.05
+#chol & thal -> There is a almost nonexistent dependence between these two variables, since p-value < 0.05
+#chol & target -> There is a non to slight negative correlation between these two variables, since p-value < 0.05
+
+
+# Correlation with fbs and all other variable
+#catdes(df, 6)
+#fbs & age -> Age has a small effect in the value of fbs, since p-value < 0.05.
+#fbs & sex -> Sex has no effect on people who has fbs <= 120 mg/dL neither on fbs > 120 mg/dL.
+#fbs & cp -> 17.32% of people who has fbs <= 120 mg/dL has Atypical Angina cp, the 26.26% has Non-anginal Pain cp, and the people with Typical Angina and Asymptomatic have no effect on fbs <= 120 mg/dL.
+#           35.94% of people who has fbs > 120 mg/dL has Non-anginal Pain cp, the 10.45% has Atypical Angina cp, and the people with Typical Angina and Asymptomatic have no effect on fbs > 120 mg/dL.
+#fbs & trestbps -> Trestbps has a small effect in the value of fbs, since p-value < 0.05.
+#fbs & chol -> Chol has no effect in values of fbs, since p-value > 0.05.
+#fbs & restecg -> 51.83% of people who has fbs <= 120 mg/dL has Abnormality restecg, the 46.44% has Normal restecg and the remaining Hypertrophy restecg has no effect on fbs <= 120 mg/dL.
+#                 60.13% of people who has fbs > 120 mg/dL has Normal restecg, the 39.87% has Abnormality restecg and the remaining Hypertrophy restecg has no effect on fbs > 120 mg/dL.
+#fbs & thalach -> Thalach has no effect in values of fbs, since p-value > 0.05.
+#fbs & exang -> Exang has no effect in values of fbs, since p-value > 0.05.
+#fbs & oldpeak -> Oldpeak has no effect in values of fbs, since p-value > 0.05.
+#fbs & slope -> 6.07% of people who has fbs <= 120 mg/dL has Upsloping slope and the remaining Downsloping slope has no effect on fbs <= 120 mg/dL neither Flat slope.
+#               13.72% of people who has fbs > 120 mg/dL has Upsloping slope and the remaining Downsloping slope has no effect on fbs > 120 mg/dL neither Flat slope.
+#fbs & ca -> Ca has a small effect in the value of fbs, since p-value < 0.05.
+#fbs & thal -> 91.97% of people with fbs >= 120 mg/dL has Reversible Defect thal, the 0.34% has Normal thal and the remaining 7.68% has Fixed Defect thal.
+#             21.57% of people with fbs >= 120 mg/dL has Fixed Defect thal, the 2.61% has Normal thal and the remaining 75.82% has Reversible Defect thal.
+#fbs & target -> Target has no effect in values of fbs, since p-value > 0.05.
+
+#catdes(df, 7)
+#restecg & age ->  Age has a small effect in the value of restecg, since p-value < 0.05.
+#restecg & sex -> Sex has no effect on the people who have Abnormality.
+#            73.33% of people with Hypertrophy are Female and the other 26.66% are Male.
+#            Sex has no effect on the people considered "Normal".
+#restecg & trestbps -> Trestbps has a small effect in the value of restecg, since p-value < 0.05.
+#restecg & chol -> Chol has a small effect in restecg value, since p-value > 0.05.
+#restecg & fbs -> 88.11% of people with Abnormality has fbs<=120 mg/dL and the other 11.89% has fbs>120 mg/dL
+#            Fbs has no effect on people who have Hypertrophy.
+#            81.48% of people considered "Normal" has fbs<=120 mg/dL and the other 18.52% has fbs>120 mg/dL
+#restecg & thalach -> Thalach has a small effect in the value of restecg, since p-value < 0.05.
+#restecg & exang -> 70.76% of people with Abnormality have Exang=No and the other 29.24% Exang=Yes.
+#                   Exang has no effect on people who have Hypertrophy.
+#                   62.37 of people considered "Normal" have Exang=No and the other 37.62% Exang=Yes.
+#restecg & oldpeak -> Oldpeak has a small effect in the value of restecg, since p-value < 0.05
+#restecg & slope -> 53.60% of people with Abnormality have Downsloping and the other 40.74% Flat slope.
+#                   26.66% of people with Hypertrophy have Upsloping and the other 73.33% Flat slope.
+#                   39.03% of people considered "Normal" have Downsloping and 52.71% Flat slope.
+#restecg & ca -> Ca has a small effect in the value of restecg, since p-value < 0.05
+#restecg & thal -> 7.79% of people with Abnormality have thal=Fixed Defect and the rest has no effect with Abnormality values.
+#                  thal has no effect on people who have Hyperthrophy
+#                  thal has no effect on people considered "normal"
+#restecg & target -> Target has a small effect in the value of restecg, since p-value < 0.05
+
+
+# Correlation with thalac and all other variable
+#condes(df, 8)
+#thalac & age -> There is a slight negative correlation between the thalac and age,since p-value < 0.05
+#thalac & sex -> Sex is not significant
+#thalac & cp -> There is a almost nonexistent dependence between these two variables, since p-value < 0.05
+#thalac & trestbps -> Trestbps is not significant
+#thalac & chol -> Thalach is not significant
+#thalac & fbs -> Fbs is not significant
+#thalac & restecg -> There is a almost nonexistent dependence between these two variables, since p-value < 0.05
+#thalac & exang -> There is a almost nonexistent dependence between these two variables, since p-value < 0.05
+#thalac & oldpeak -> There is a slight negative correlation between these two variables, since p-value < 0.05
+#thalac & slope -> There is a almost nonexistent dependence between these two variables, since p-value < 0.05
+#thalac & ca -> There is a slight negative correlation between these two variables, since p-value < 0.05
+#thalac & thal -> There is a almost nonexistent dependence between these two variables, since p-value < 0.05
+#thalac & target -> There is a non to slight negative correlation between these two variables, since p-value < 0.05
+
+
+# Correlation with exang and all other variable
+#catdes(df, 9)
+# exang & age -> Age has non to small effect in the value of exang, since p-value > 0,05
+# exang & sex -> Exang=NO:35.00% are Female, and the other 65.00% are Male.
+#                Exang=YES: 78.55% are Male, and the other 21.45% are Female.
+# exang & cp -> Exang=NO: 36.32% have Non-anginal Pain, 22.79% have Atypical Angina, 9.41% are Asymptomatic, and
+#               31.47% have Typical Angina.
+#               Exang=YES: 82.03% have Typical Angina, 3.77% are Asymptomatic, 3.48% have Atypical Angina, and 
+#               10.72% have Non-anginal Pain
+# exang & trestbps -> Trestbps has no effect in the value of exang, since p-value > 0,05
+# exang & chol -> Chol has non to small effect in the value of exang, since p-value < 0,05
+# exang & fbs -> Fbs is not significant.
+# exang & restecg -> Exang=NO:53.38% have Abnormality, 45.59% are Normal and the rest is not significant.
+#                    Exang=YES:54.2% are Normal, 43.48% have ABnormality and the rest is not significant.
+# exang & thalac -> Thalac has a large effect in the value of exang, since p-value < 0,05
+# exang & oldpeak -> Oldpeak has medium to large effect in the value of exang, since p-value > 0,05
+# exang & slope -> Exang=NO: 56.18% have Downsloping, 37.94% have Flat, and 5.88% have Upsloping
+#                  Exang=YES: 64.93% have Flat, 9.9% have Upsloping, and 25.22% have Downsloping 
+# exang & ca -> Ca has a small effect in the value of exang, since p-value < 0,05
+# exang & thal -> Exang=NO:92.5% have Reversible Defect, 7.05% have Fixed Defect
+#                 and the rest is not significant.
+#                 Exang=YES: 15.07% have Fixed Defect, 83.77% have Reversible Defect and the rest is not significant
+# exang & target -> Target has a large effect in the value of exang, since p-value < 0,05
+
+
+# Correlation with oldpeak and all other variables
+#condes(df, 10)
+# oldpeak & age -> There is a slight positive correlation between the oldpeak and age ,since p-value < 0.05
+# oldpeak & sex -> There is almost nonexistent dependence between these two variables, since p-value < 0.05
+# oldpeak & cp -> There is a medium dependence between these two variables, since p-value < 0.05
+# oldpeak & trestbps -> There is slight positive correlation between the oldpeak and trestbps,since p-value < 0.05
+# oldpeak & chol -> There is slight positive correlation between the oldpeak and chol,since p-value < 0.05
+# oldpeak & fbs -> fbs has no effect on the values of oldpeak, since p-value > 0.05
+# oldpeak & restecg -> There is a small dependence between these two variables, since p-value < 0.05
+# oldpeak & thalach -> There is a near moderate negative correlation between these variables, since p-value < 0.05
+# oldpeak & exang -> There is a medium dependence between these two variables, since p-value < 0.05
+# oldpeak & slope -> There is a large dependence between these two variables, since p-value < 0.05
+# oldpeak & ca -> There is a slight positive correlation between the oldpeak and ca,since p-value < 0.05
+# oldpeak & thal ->  There is a medium dependence between these two variables, since p-value < 0.05
+# oldpeak & target -> There is a near moderate negative correlation between these variables, since p-value < 0.05
+
+
+# Correlation with slope and all other variable
+#catdes(df, 11)
+#slope & age -> Age has a small effect in values of slope, since p-value < 0.05 and eta2 < 0.06 and eta2 > 0.01.
+#slope & sex -> Sex has no effect in values of slope, since p-value > 0.05.
+#slope & cp -> 25.16% of Downsloping slope has Atypical Angina cp, 33.90% has Non-anginal Pain, 34.75% has Typical Angina and the remaining Asymptomatic values have no effect in Downsloping slope.
+#             8.51% of Flat slope has Atypical Angina cp, 22.82% has Non-anginal Pain, 60.58% has Typical Angina and the remaining Asymptomatic values have no effect in Flat slope.
+#             Cp has no effect in values of Upsloping slope.
+#slope & trestbps -> Trestbps has a small effect in values of slope, since p-value < 0.05 and eta2 < 0.06.
+#slope & chol -> Chol has no effect in values of slope
+#slope & fbs -> fbs has no effect in values of Downsloping slope.
+#               fbs has no effect in values of Flat slope.
+#               28.38% of Upsloping slope values have fbs > 120 mg/dL and the remaining 71.62% have fbs <= 120 mg/dL.
+#slope & restecg -> 58.64% of Downsloping slope values have Abnormality restecg, 41.36% have Normal restecg and 0% have Hypertrophy restecg.
+#                   54.36% of Flat slope values have Normal restecg, 43.36% have Abnormality restecg and 2.28% have Hypertrophy restecg.
+#                   5.40% of Uplsoping values have Hypertrophy restecg, and Normal restecg neither Abnormality restecg have effect in values of Upsloping slope.
+#slope & thalach -> thalach has a large effect in values of slope, since p-value < 0.05 and eta2 > 0.14.
+#slope & exang -> 81.45% of Downsloping slope values have no exang and 18.55% have exang.
+#                 53.53% of Flat slope values have no exang and 46.47% have exang.
+#                 54.05% of Upsloping slope values have no exang and 45.94% have exang.
+#slope & oldpeak -> oldpeak has a large effect in values of slope, since p-value < 0.05 and eta2 > 0.14.
+#slope & ca -> Ca has a small effect in values of slope, since p-value < 0.05 and eta2 < 0.06.
+#slope & thal -> 97.87% of Downsloping slope values have Reversible Defect thal, 1.49% have Fixed Defect thal and Normal thal has no effect in Downsloping.
+#               Thal has no effect in Flat slope values.
+#               36.48% of Upsloping slope values have Reversible Defect thal, 63.51% have Fixed Defect thal and Normal thal has no effect in Upsloping.
+#slope & target -> Target has a medium effect in values of slope, since p-value < 0.05 and eta2 < 0.14 and eta2 > 0.06.
+
+
+# Correlation with ca and all other variables
+#condes(df, 12)
+# ca & age -> There is a slight positive correlation between the ca and age ,since p-value < 0.05
+# ca & sex -> There is a small dependence between these two variables, since p-value < 0.05
+# ca & cp -> There is a small dependence between these two variables, since p-value < 0.05
+# ca & trestbps -> There is slight positive correlation between the ca and trestbps,since p-value < 0.05
+# ca & chol -> There is slight positive correlation between the ca and chol,since p-value < 0.05
+# ca & fbs -> There is a small dependence between these two variables, since p-value < 0.05
+# ca & restecg -> There is a small dependence between these two variables, since p-value < 0.05
+# ca & thalach -> There is a slight negative correlation between these variables, since p-value < 0.05
+# ca & exang -> There is a small dependence between these two variables, since p-value < 0.05
+# ca & oldpeak -> There is a slight positive correlation between the ca and oldpeak,since p-value < 0.05
+# ca & slope ->There is a small dependence between these two variables, since p-value < 0.05
+# ca & thal ->  There is a small dependence between these two variables, since p-value < 0.05
+# ca & target -> There is a near moderate negative correlation correlation between these variables, since p-value < 0.05
+
+#catdes(df, 13)
+#thal & age ->  Age has no effect in the value of thal, since p-value > 0.05.
+#thal & sex -> 89% of people with thal=Fixed Defect are Male and the other 11% are Female.
+#              Sex has no effect on the people with thal=Normal.
+#              32.46% of people with thal=Reversible Defect are Female and the other 67.54% are Male.
+#thal & trestbps -> Trestbps has a small effect in the value of thal, since p-value < 0.05.
+#thal & chol -> Chol has a small effect in thal value, since p-value > 0.05.
+#thal & fbs -> 33% of people with thal=Fixed Defect has fbs>=120 mg/dL and the other 67% has fbs>120 mg/dL
+#              57.14% of people with thal=Normal has fbs>=120 mg/dL and the other 42.85% has fbs>120 mg/dL
+#              12.63% of people with thal=Reversible Defect has fbs<=120 mg/dL and the other 87.36% has fbs>120 mg/dL
+#thal & thalach -> Thalach has a small effect in the value of thal, since p-value < 0.05.
+#thal & exang -> 48% of people with thal=fixed defect have Exang=No and the other 52% Exang=Yes.
+#                Exang has no effect on people with thal=Normal
+#                68.51% of people with thal=Reversible Defect have Exang=No and the other 31.48% Exang=Yes.
+#thal & oldpeak -> Oldpeak has a medium effect in the value of thal, since p-value < 0.05
+#thal & slope -> 7% of people with thal=Fixed Defect have Downsloping and the other 47% Flat slope.
+#                slope has no effect on people with thal=Normal
+#                50% of people with thal=Reversible Defect have Downsloping and 2.94% Flat slope.
+#thal & ca -> ca has no effect in the value of thal, since p-value > 0.05
+#thal & restecg -> 40% of people with thal=Fixed Defect have Abnormality
+#                  And the rest has no effect with thal values.
+#thal & target -> Target has a small effect in the value of thal, since p-value < 0.05
+
+```
+
+
+
+## Heat Map correlacions
+```{r}
+df2 <- Filter(is.numeric, df)
+df2 <- scale(df2)
+cormat <- round(cor(df2),2)
+library(reshape2)
+melted_cormat <- melt(cormat)
+
+library(ggplot2)
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile()
+```
+
+# Profiling
+
+```{r}
+# Continuous output:
+library(FactoMineR)
+summary(df$target)
+res.condes <- condes(df, 14, proba = 0.50)
+res.condes$quanti  # Global association to numeric variables
+res.condes$quali # Partial association of numeric variables to levels of outcome factor
+res.condes$category  # Partial association to significative levels in factors
+```
+
+# Multivariate outliers
+
+```{r}
+library(chemometrics)
+
+summary(df[,vars_con])
+mout<-Moutlier(df[,vars_con[1:5]],quantile = 0.9975, plot = TRUE)
+# Classical: Assumption of normality on the underlying generating mechanism
+# Robust: Median and absolute median deviations -> Not normal generating mechanism
+
+length(which(mout$rd>mout$cutoff))
+ll<-which(mout$rd>mout$cutoff)
+Boxplot(mout$rd)
+df[ll,c(vars_con)]
+df$mout <- 0
+df$mout[ ll ]<-1
+df$mout <- factor( df$mout, labels=c( "NoMOut","YesMOut")) #We identify the Mildoutliers if the row has the value "YesMOut" in the mout column.
+table(df$mout)
+```
+
+
+## Analisis de Components Principals
+```{r}
+names(df)
+vars_con
+vars_dis
+vars_res = c("target")
+
+
+c(vars_res, vars_dis,vars_con, "mout") #All variables
+summary( df[ , c(vars_res, vars_dis,vars_con, "mout") ] )
+res.pca<-PCA(df[,c(vars_res, vars_dis, vars_con)], quali.sup=c(2:8), quanti.sup= c(1,15)) 
+#res.pca<-PCA(df[,c(vars_res, vars_dis, vars_con)], quali.sup=c(2:8)) 
+
+
+# Multivariant outliers should be included as supplementary observations
+ll <- which( df$mout == "YesMOut")
+res.pca<-PCA(df[,c(vars_res, vars_dis, vars_con)],quali.sup=c(2:8),quanti.sup= c(1,15), ind.sup = ll ) 
+
+
+
+plot.PCA(res.pca,choix=c("var"),axes = c(1, 2))
+plot.PCA(res.pca,choix=c("var"),invisible=c("var"))
+plot.PCA(res.pca,choix=c("var"),invisible=c("quanti.sup","var"))
+plot.PCA(res.pca,choix=c("ind"),invisible=c("ind"))
+```
+Aquest extrany PCA pot ser resultat de que la mostra que s'ha utilitzat per estudiar es gent jove amb problemes de cor principalment i en canvi la gent d'una major edat que ha format part de l'estudi no té aquests problemes. Això fa que quan més jove, doncs més probable de que tinguis problemes de cor. Però el colesterol, si que està correlacionat positivament en l'eix de les Y, que representa el conjunt de variables relacionades amb la sang. 
+Ara bé, el "ca" o "oldpeak", són també causes d'atac de cor, al ser problemes comuns en gent gran, es correlacionen negativament amb el target pel que s'ha esmentat anteriorment.
+
+
+
+```{r}
+plot(df[,1], df[,14]) #Here we can verify that there is only people with problems or people with good heart health.
+hist(df[,1]) #Here we verify that the most part of our population has around 60 years old, but the majority of those individuals does not have heart problems. And the most part of our population that has problems is under those 50 years old. In addition, the youngest inviduals, younger than 35, the majority has problems.
+
+plot(df[,12], df[,14])
+
+plot(df[,10], df[,14])
+plot(df[,1], df[,10]) #Here we conclude that not matter how bad a high oldpeak is, that in our individuals with heart problems they have it correct. So in reality is a factor that the bigger, the more probability to have a problem. But for our individuals in this study we cannot conclude that. And this affects the PCA.
+
+#PCA with at least 45 years 
+df2 <- df[df$age < 45,]
+
+res.pca45<-PCA(df2[,c(vars_res, vars_dis, vars_con)], quali.sup=c(2:8), quanti.sup= c(1,15)) 
+#res.pca<-PCA(df[,c(vars_res, vars_dis, vars_con)], quali.sup=c(2:8)) 
+
+
+# Multivariant outliers should be included as supplementary observations
+ll <- which( df2$mout == "YesMOut")
+res.pca45<-PCA(df2[,c(vars_res, vars_dis, vars_con)],quali.sup=c(2:8),quanti.sup= c(1,15), ind.sup = ll ) 
+
+
+```
+
+Eigenvalues and dominant axes analysis. How many axes we have to interpret according to Kaiser and Elbow's rule?
+
+Individuals point of view: Are they any individuals "too contributive"? To better understand the axes meaning use the extreme individuals. Detection of multivariate outliers and influent data.
+
+Interpreting the axes:  Variables point of view coordinates, quality of representation, contribution of the variables  
+Perform a PCA taking into account also supplementary variables the supplementary variables can be quantitative and/or categorical 
+
+```{r}
+res.pca$eig
+```
+According to the Kaiser rule we have to take into account those components which have the 80% of the whole variables. So in this case we should consider comp 1 (35.38%), comp 2 (19.65%), comp 3 (14.99%) and comp 4 (11.71%)
+
+
+```{r}
+res.pca$eig[,1]
+
+# Eigenvalues are the square of the singular values (sdev)
+eigenvalues <- res.pca$eig[,1]
+
+# Calculate the proportion of variance explained
+total_variance <- sum(eigenvalues)
+explained_variance <- eigenvalues / total_variance
+
+print(explained_variance)
+
+summary(res.pca, nb.dec = 2, ncp = 3, nbelements = 1)
+barplot(res.pca$eig[, 1], main = "Eigenvalues", names.arg = paste("dim", 1:nrow(res.pca$eig)))
+
+plot(explained_variance, xlab = "Principal Component", ylab = "Proportion of Variance Explained", type = 'b', main = "Scree Plot")
+
+```
+
+Here we can confirm that we need the first 4 components to at least represent the 80% of the variables. We also have added a barplot were we also can see that the diference in the values represented between 4th and 5th are minimum.
+
+
+Using the res.pca45, the PCA done by age greater than 45 years.
+
+```{r}
+res.pca45$eig
+```
+
+According to the Kaiser rule we have to take into account those components which have the 80% of the whole variables. So in this case we should consider comp 1 (26.35%), comp 2 (22.96%), comp 3 (17.87%) and comp 4 (13.8%)
+
+
+```{r}
+res.pca45$eig[,1]
+
+# Eigenvalues are the square of the singular values (sdev)
+eigenvalues45 <- res.pca45$eig[,1]
+
+# Calculate the proportion of variance explained
+total_variance45 <- sum(eigenvalues45)
+explained_variance45 <- eigenvalues45 / total_variance45
+
+print(explained_variance45)
+
+summary(res.pca45, nb.dec = 2, ncp = 3, nbelements = 1)
+barplot(res.pca45$eig[, 1], main = "Eigenvalues", names.arg = paste("dim", 1:nrow(res.pca45$eig)))
+
+plot(explained_variance, xlab = "Principal Component", ylab = "Proportion of Variance Explained", type = 'b', main = "Scree Plot")
+
+```
+
+Here we can confirm that we need the first 4 components to at least represent the 80% of the variables. We also have added a barplot were we also can see that the diference in the values represented between 4th and 5th are minimum.
+
+
+
+
+#Hierarchical Clustering (we will do it using the res.pca)
+
+We continue now with hierarchical clustering. The function we will use is in the package FactoMineR. This function can work already with the result of the PCA function.
+
+```{r}
+res.pca<-PCA(df[,c(vars_res, vars_dis, vars_con)], quali.sup=c(2:8), quanti.sup= c(1,15)) 
+
+res.hcpc <- HCPC(res.pca, nb.clust=-1)
+
+```
+
+```{r}
+res.hcpc
+```
+Global View of the Results
+```{r}
+res.hcpc$data.clust$clust
+table(res.hcpc$data.clust$clust)
+
+res.hcpc$desc.var  
+```
+
+Test of the association of categorical variables
+```{r}
+res.hcpc$desc.var$test.chi2  
+```
+slope (p = 8.18e-42, df = 6): The extremely small p-value suggests that the variable 'slope' has a statistically significant association with the clusters. With 6 degrees of freedom, which suggests that the variable has several categories influencing how data is grouped into these clusters, since df > number of clusters.
+
+cp (p= 4.36e-33, df = 9): Again, a very small p-value indicating strong statistical significance. With 9 degrees of freedom, which suggests that the variable has several categories influencing how data is grouped into these clusters. 
+
+exang (p = 2.98e-23, df = 3): A significant p-value with fewer degrees of freedom (3), suggesting a strong association between 'exang' and the clusters.
+
+restecg (p = 3.69e-14, df = 6): This also shows a significant relationship but with a slightly higher p-value compared to the first three variables, indicating a somewhat less strong association with the clusters.
+
+sex (p = 5.42e-06, df = 3): While still statistically significant, 'sex' has the least strong association among the variables listed,since it has the lower p-value. And with only 3 degrees of freedom.
+
+thal (p = 1.21e-05, df = 6): 'thal' shows a significant but less strong association compared to the top variables, but with more degrees of freedom (6) than some of them, which suggests that the variable has several categories influencing how data is grouped into these clusters.
+
+fbs (p = 1.76e-05, df = 3): Significant p-value, since it is smaller than 0.05, but less so than the top variables. And with 2 degrees of freedom.
+
+ 
+
+
+
+
+Tests of categorical association
+```{r}
+res.hcpc$desc.var$category[1]
+```
+
+In cluster 1:
+We can detect several variables that have a strong influence in it. 
+The first is the 'slope=Downsloping', since it has a very high and positive v-test value. And also we can see that the mean in the cluster is significantly higher than the global one. This same, occurs in 'exang=No' and 'res.tecg=restecg_Abnormality'.
+
+And then the variable that are less characteristic, are the 'exang=Yes', 'slope=Flat' and 'cp=Typical Angina', in contrast of the variables with strong influence, have significant negative v.test values and the mean in the cluster is significantly lower than the global one, suggesting they are not typical of this cluster.
+
+
+```{r}
+res.hcpc$desc.var$category[2]
+```
+
+In cluster 2: 
+Here we can see a gender influence, since 'sex=Female' has a high positive v-test and a mean in the cluster is significantly higher than the global one. And the 'sex=Male' is a high negative v-test and a mean in the cluster is significantly lower than the global one.
+
+Also a good point to mention is that 'cp=Asymptomatic' and 'restecg=restecg_Normal' are characteristic of this cluster, with positive v.test values and with a mean in the cluster is significantly higher than the global one.
+
+And as well as the gender, the blood sugar levels are also significant, 'fbs=<= 120 mg/dL' and 'fbs=> 120 mg/dL' with corresponding positive and negative influences.
+
+
+```{r}
+res.hcpc$desc.var$category[3]
+```
+In cluster 3:
+
+
+```{r}
+res.hcpc$desc.var$category[4]
+```
+
+
+
+```{r}
+res.hcpc$desc.var$quanti.var  # Global tests of numerical association
+```
+
+```{r}
+res.hcpc$desc.var$quanti  # Specific tests of numerical association
+```
+
